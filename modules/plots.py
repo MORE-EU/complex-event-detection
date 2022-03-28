@@ -5,6 +5,7 @@ from datetime import datetime
 import seaborn as sns
 from dtw import dtw
 
+
 def plot_knee(mps, save_plot=False, filename='knee.png'):
     
     """ 
@@ -229,3 +230,62 @@ def plot_segmentation(df, path, output, fixed_dates, file_name, top_seg=3):
             fig.savefig(name + "_" + str(i))
     model = pd.DataFrame.from_dict({"L": lam,'Changepoints indexes': regi, "Changepoints Dates": dloc, "Normalized Distance": (diff1-np.min(diff1))/(np.max(diff1) - np.min(diff1))})
     return best, model
+    
+    
+def motif_plot(df,mot,miclean,dfdaypower,wholedict,Ranking,show_best=True):
+    matplotlib.rcParams.update({'font.size': 12,'figure.figsize': [20, 4],'lines.markeredgewidth': 0,
+                                'lines.markersize': 2})
+    dates = pd.DataFrame(index=range(len(df)))
+    dates = dates.set_index(df.index)
+    dates['power']=df['power']
+    dates['soil']=df.soiling_derate
+    dates['preci']=df.precipitation
+    dates['irradiance']=df.poa
+    if show_best== False:
+        for m in mot:
+            fig, axes = plt.subplots(nrows=1, ncols=int(len(miclean[m])), figsize=(20,6), constrained_layout=True)
+            plt.suptitle(f'Plots for {m}-Days')
+            for i,d in enumerate(miclean[m]):
+                if len(miclean[m])==1:
+                    for mtype in range(0,len(miclean[m])):
+                        plt.xticks(labels=df.index,ticks=np.arange(len(dfdaypower)))
+                        plt.suptitle(f'{mtype+1}-Motif Type with Length of {m}-Days, with {len(miclean[m][mtype])} Neighbors ', fontsize='20')
+                        plt.plot(dates.index,dates.power,lw=1,color='pink',label='Power')
+                        plt.plot(dates.index,dates.soil,lw=1,color='blue',label='SoilDerate')
+                        plt.plot(dates.index,dates.preci,lw=1,color='green',label='Precipitation')
+                        for idx in miclean[m][mtype]:
+                            plt.plot(dates.index[idx:idx+m], dates.power[idx:idx+m], lw=2,label='Motifs', )
+                            plt.legend(['Power','SoilDerate' ,'Precipitation', 'Motifs'], loc='upper left')
+                        plt.show()      
+                else:
+                    ax = axes[i]
+                    ax.set_title(f'{i+1}-Motif Type with Length of {m}-Days, with {len(miclean[m][i])} Neighbors ', fontsize='13')
+                    ax.plot(dates.power,color='pink',label='Raw Power')
+                    ax.plot(dates.soil,color='blue',label='Soil Derate')
+                    ax.plot(dates.preci,color='green',label='Precipitation')
+                    for idx in miclean[m][i]:
+                        ax.plot(dates.power[idx:idx+m])
+                        ax.set_ylabel('Power')
+                        ax.set_xlabel('One Year')
+
+                    ax.legend(['Power','SoilDerate' ,'Precipitation', 'Motifs'], fontsize='12',loc='upper left')
+
+        plt.show()
+    else:
+        summ=summary_motifs(mot,wholedict,Ranking)
+        summ=summ[summ['Slope ratio']<0]
+        for m in summ['Pattern Lenght in Days']:
+            fig, axes = plt.subplots(nrows=1, ncols=1, figsize=(20,6), constrained_layout=True)
+            plt.suptitle(f'Plots for {m}-Days')
+
+            for mtype in (summ['Motif type'][summ['Pattern Lenght in Days']==m].values-1):
+                plt.xticks(labels=df.index,ticks=np.arange(len(dfdaypower)))
+                plt.suptitle(f'{mtype+1}-Motif Type with Length of {m}-Days, with {len(miclean[m][mtype])} Neighbors ', fontsize='20')
+                plt.plot(dates.index,dates.power,lw=1,color='pink',label='Power')
+                plt.plot(dates.index,dates.soil,lw=1,color='blue',label='SoilDerate')
+                plt.plot(dates.index,dates.preci,lw=1,color='green',label='Precipitation')
+                for idx in miclean[m][mtype]:
+                    plt.plot(dates.index[idx:idx+m], dates.power[idx:idx+m], lw=2,label='Motifs', )
+                    plt.legend(['Power','SoilDerate' ,'Precipitation', 'Motifs'],fontsize=7, loc='upper left')
+            plt.show()      
+    mpl.rcParams.update(mpl.rcParamsDefault)

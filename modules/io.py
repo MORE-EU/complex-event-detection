@@ -29,7 +29,7 @@ def load_df(path):
         df.set_index(df.index, inplace=True)
     return df
   
-  
+    
 def load_mp(path):
     """
     Load the Univariate/Multivariate Matrix profile which was saved from Create_mp in a .npz file.
@@ -121,8 +121,8 @@ def load_mdmp_from_h5(dir_path, name, k):
     index = h5f[f'idx{k}'][:]
     h5f.close()
     return mp, index
-  
-  
+
+
 def save_results(results_dir, sub_dir_name, p, df_stats, m, radius, ez, k, max_neighbors):
     """ 
     Save the results of a specific run in the directory specified by the results_dir and sub_dir_name.
@@ -179,5 +179,50 @@ def save_results(results_dir, sub_dir_name, p, df_stats, m, radius, ez, k, max_n
     with open(path+'/info.txt', 'w') as f:
         for ln in lines:
             f.write(ln + '\n')
-
             
+            
+def output_changepoints(scores, indices, dates_rain_start, dates_rain_stop, errors_br, errors_ar, error_name_br, error_name_ar, precip):
+    """
+    Given the output of one of the functions calc_changepoints_one_model, calc_changepoints_many_models, 
+    returns a dataframe containing all relevant information about changepoints.  
+    Args:
+        scores: An array of scores associated to each input segmnt 
+        indices: Indices of the input segments (pointing to the input list)
+        dates_rain_start: Array of starting points of segments under investigation 
+        dates_rain_stop: Array of ending points of segments under investigation 
+        errors_br: Array of errors corresponding to periods preceding the segments under investigation
+        errors_ar: Array of errors corresponding to periods following the segments under investigation
+        error_name_br: Name of the error used for the period preceding segments
+        error_name_ar: Name of the error used for the period following segments
+        precip: Array of precipitation values
+    Returns:
+        A pandas dataframe containing relevant information about the detected changepoints/segments. This includes scores and
+        precipitation values for the input segments. 
+    """
+    start_dates = []
+    end_dates = []
+    all_prec = []
+    all_errors_br = []
+    all_errors_ar = []
+    all_scores = []
+    prec1 = []
+    prec2 = []
+    types = []
+    ids = []
+    for i in indices:
+        d1 = dates_rain_start.iloc[i]
+        d2 = dates_rain_stop.iloc[i]
+        all_errors_br.append(errors_br[i])
+        all_errors_ar.append(errors_ar[i])
+        precip2 = precip.loc[d1:d2][1:-1].values
+        start_dates.append(d1)
+        end_dates.append(d2)
+        if len(precip2)>0:
+            prec1.append(precip2.max())
+            prec2.append(precip2.mean())
+        else:
+            prec1.append(0)
+            prec2.append(0)    
+        ids.append(i)    
+        all_scores.append(scores[i])
+    return pd.DataFrame.from_dict({"Score": all_scores, "id": ids, "Starting date": start_dates, "Ending date": end_dates, "Max precipitation": np.round(prec1,2),  "Mean precipitation": np.round(prec2,2), error_name_br+" before rain (true-pred)": all_errors_br,  error_name_ar+" after rain (true-pred)": all_errors_ar})    

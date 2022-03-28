@@ -6,10 +6,11 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn import metrics
 from modules.preprocessing import enumerate2
-from sklearn.model_selection import GridSearchCV
-from sklearn.ensemble import RandomForestRegressor as RFRegressor
-from lightgbm import LGBMRegressor
-from xgboost import XGBClassifier, XGBRegressor
+from sklearn.linear_model import LassoCV
+from sklearn.feature_selection import SelectFromModel
+from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
+from sklearn.linear_model import TheilSenRegressor
+
 
 def predict(df_test, model, feats, target):
     """
@@ -32,7 +33,7 @@ def predict(df_test, model, feats, target):
     y_pred = model.predict(X)
     return y_pred
 
-# changed
+
 def fit_linear_model(df, feats, target, a=1e-4, deg=3, method='ridge', fit_intercept=True, include_bias=True):
     """
     Fits a regression model on a given dataframe, and returns the model, the predicted values and the associated 
@@ -66,6 +67,8 @@ def fit_linear_model(df, feats, target, a=1e-4, deg=3, method='ridge', fit_inter
         
     elif method == 'ols':
         model = LinearRegression(fit_intercept=fit_intercept)
+    elif method == 'rf':
+        model = RFRegressor(n_jobs = -1)
     else:
         print('Unsupported method')
     
@@ -78,6 +81,7 @@ def fit_linear_model(df, feats, target, a=1e-4, deg=3, method='ridge', fit_inter
     y_pred = pipeline.predict(X)
     r_sq, mae, me, mape, mpe = st.score(y, y_pred)
     return pipeline, y_pred, r_sq, mae, me, mape, mpe
+
 
 def get_line_and_slope(values):
     """
@@ -100,6 +104,7 @@ def get_line_and_slope(values):
     slope = ols.coef_.item()
     intercept = ols.intercept_.item()
     return line, slope, intercept
+
 
 def train_on_reference_points(df, w_train, ref_points, feats, target, random_state=0):
     """
@@ -147,6 +152,7 @@ def train_on_reference_points(df, w_train, ref_points, feats, target, random_sta
     print(f'MAE:{validation_scores[1]:.3f} \nME(true-pred):{validation_scores[2]:.3f} \nMAPE:{validation_scores[3]:.3f} \nMPE:{validation_scores[4]:.3f} \nR2: {validation_scores[0]:.3f}\n')
     return model, training_scores, validation_scores
 
+
 def predict_on_sliding_windows(df, win_size, step, model, feats, target):
     """
     Given a regression model, predicts values on a sliding window in a dataframe 
@@ -182,6 +188,7 @@ def predict_on_sliding_windows(df, win_size, step, model, feats, target):
             windows.append((time, window))
     scores = np.array(scores_list)
     return scores, preds_test, windows
+
 
 def changepoint_scores(df, feats, target, d1, d2, w_train, w_val, w_test):
     """
@@ -233,3 +240,191 @@ def changepoint_scores(df, feats, target, d1, d2, w_train, w_val, w_test):
     else:
         raise Exception("Either the training set is empty or the test set is empty")
 
+
+def fit_pipeline(df, feats, target, pipeline, params):
+    """
+    Fits a regression pipeline on a given dataframe, and returns the fitted pipline,
+    the predicted values and the associated scores.
+
+    Args:
+        df: The input dataframe.
+        feats: List of names of columns of df. These are the feature variables.
+        target: The name of a column of df corresponding to the dependent variable.
+        pipeline: A pipeline instance, a scikit-learn object that sequentially applies a list of given 
+                  preprocessing steps and fits a selected machine learning model.
+        params: A dictionary that contains all the parameters that will be used by `pipeline`.
+                The dictionary keys must follow the scikit-learn naming conventions.
+
+    Returns:    
+        pipeline: The fitted model. This is an instance of Pipeline.
+        y_pred: An array with the predicted values.
+        r_sq: The coefficient of determination “R squared”.
+        mae: The mean absolute error.
+        me: The mean error.
+        mape: The mean absolute percentage error.
+        mpe: The mean percentage error.
+    """
+    
+    df_x = df[feats]
+    df_y = df[target]
+    X = df_x.values
+    y = df_y.values
+
+    pipeline.set_params(**params)
+    pipeline.fit(X, y)
+    y_pred = pipeline.predict(X)
+    r_sq, mae, me, mape, mpe = st.score(y, y_pred)
+    return pipeline, y_pred, r_sq, mae, me, mape, mpe
+
+
+def lasso_selection(df, features, target, alphas=None):
+    """
+    Utilizes Lasso regression, which penalizes the l1 norm of the weights and indtroduces sparsity in the solution, 
+    to find the most `relevant` features, i.e. the ones that have non-zero weights
+
+    Args:
+        df: DataFrame that contains the dataset.
+        feats: A list of names of columns of df corresponding to the feature variables.
+        target: A name of a column of df corresponding to the dependent variable.
+        alphas: A list of regularization coefficients to be used, if left as None the alphas are set automatically.
+
+    Returns: 
+        selected_features: A list with the name of the columns that were selected by the Lasso method.
+    """
+    
+    X = df[features]
+    y = df[target]
+    lasso = LassoCV(cv=5, random_state=42, alphas=alphas).fit(X, y)
+    model = SelectFromModel(estimator=lasso, prefit=True)
+    sup = model.get_support()
+    selected_features = list(np.array(features)[sup])
+    return selected_features
+
+
+def perform_grid_search(df, feats, target, scorer, model, params, randomized=False):
+    
+    """
+    Performs a grid-search to find the parameters in the provided search space that yield the best results.
+    Used for model tuning.
+
+    Args:
+        df: DataFrame that contains the dataset.
+        feats: A list of names of columns of df corresponding to the feature variables.
+        target: A name of a column of df corresponding to the dependent variable.
+        scorer: A performance metric or loss function used in the grid search.
+        model: The model that will be tuned.
+        params: A dictionary containing all the parameters to be tested.
+        randomized: If set to True, a random sample of all the parameter combinations will be tested.
+
+    Returns: 
+        selected_params: Dictionary that contains the combination of parameters that resulted in the best score during grid search.
+    """
+    
+    df_x = df[feats]
+    df_y = df[target]
+    X = df_x.values
+    y = df_y.values
+    
+    model = model
+    
+    if randomized == True:
+        grid_pipeline = RandomizedSearchCV(model, params, n_iter=100, verbose=0, n_jobs=-1, pre_dispatch=64, scoring=scorer, cv=3, random_state=42).fit(X, y)
+    else:
+        grid_pipeline = GridSearchCV(model, params, verbose=0, n_jobs=-1, pre_dispatch=64, scoring=scorer, cv=3).fit(X, y)
+   
+    selected_params = {}
+    for key in  params:
+        selected_params[key] = grid_pipeline.best_params_[key]
+    
+    return selected_params
+
+
+def get_ts_line_and_slope(values):
+    """
+    Fits a line on the 2-dimensional graph of a regular time series, defined by a sequence of real values. 
+
+    Args:
+        values: A list of real values.
+
+    Returns: 
+        line: The list of values as predicted by the linear model.
+        slope: Slope of the line.
+        intercept: Intercept of the line.   
+    """
+
+    ols = TheilSenRegressor(random_state=0)
+    X = np.arange(len(values)).reshape(-1,1)
+    y = values.reshape(-1,1)
+    
+    ols.fit(X, y.ravel())
+    line = ols.predict(X)
+    slope = ols.coef_.item()
+    intercept = ols.intercept_.item()
+    return line, slope, intercept  
+
+
+def calc_changepoints_one_model(df, dates_rain_start, dates_rain_stop, model, target, feats, w1, w2):
+    """
+    Returns errors associated with changepoint detection in the input segments. Applies the method using one 
+    model in all segments (Method 2).
+    Args:
+        df: Input pandas dataframe
+        dates_rain_start: Array of starting points of segments under investigation 
+        dates_rain_stop: Array of ending points of segments under investigation 
+        model: Regression model 
+        target: Name of dependant variable in model
+        feats: List of feature variables in model
+        w1: Number of days defining the period before each segment, which will be used for calculating the associated score 
+        w2: Number of days defining the period after each segment, which will be used for calculating the associated score 
+    Returns:
+        errors_br: Array containing prediction errors before each segment  
+        errors_ar: Array containing prediction errors after each segment 
+    """
+    errors_br = np.empty((dates_rain_start.size, 6))
+    errors_ar = np.empty((dates_rain_start.size, 6))
+    for i in range(dates_rain_start.size):
+        d1 = dates_rain_start.iloc[i]
+        d0 = d1 - pd.Timedelta(days=w1)
+        d2 = dates_rain_stop.iloc[i]
+        d3 = d2 + pd.Timedelta(days=w2)
+        df_ar = df[d2:d3]
+        df_br = df[d0:d1]
+        try:
+            y_pred_ar = le.predict(df_ar, model, feats, target)
+            y_pred_br = le.predict(df_br, model, feats, target)
+            errors_ar[i,:] = st.score(df_ar[target].array, y_pred_ar)
+            errors_br[i,:] = st.score(df_br[target].array, y_pred_br)
+        except:
+            errors_ar[i,:] = [np.nan]*6
+            errors_br[i,:] = [np.nan]*6
+    return errors_br, errors_ar        
+
+
+def calc_changepoints_many_models(df, dates_rain_start, dates_rain_stop, target, feats, w1, w2, w3):
+    """
+    Returns errors associated with changepoint detection in the input segments. Applies the method using one 
+    model for each segment (Method 1).
+    Args:
+        df: Input pandas dataframe
+        dates_rain_start: Array of starting points of segments under investigation 
+        dates_rain_stop: Array of ending points of segments under investigation 
+        target: Name of dependant variable in model
+        feats: List of feature variables in model
+        w1: Number of days defining the period before each segment, which will be used for training the model
+        w2: Number of days defining the period before each segment, which will be used for calculating the associated score 
+        w3: Number of days defining the period after each segment, which will be used for calculating the associated score 
+    Returns:
+        errors_br: Array containing prediction errors before each segment  
+        errors_ar: Array containing prediction errors after each segment 
+    """
+    errors_br = np.empty((dates_rain_start.size, 6))
+    errors_ar = np.empty((dates_rain_start.size, 6))
+    for i in range(dates_rain_start.size):
+        d1 = dates_rain_start.iloc[i]
+        d2 = dates_rain_stop.iloc[i]
+        try:
+            y_pred_train, score_train, y_pred_val, errors_br[i,:], y_pred_test, errors_ar[i,:] = le.changepoint_scores(df, feats, target, d1, d2, w1, w2, w3)
+        except:
+            errors_ar[i,:] = [np.nan]*6
+            errors_br[i,:] = [np.nan]*6
+    return errors_br, errors_ar 

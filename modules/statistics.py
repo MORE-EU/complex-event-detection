@@ -107,3 +107,16 @@ def multi_corr(df, dep_column):
     df_str_corr_ind_inv = inv(df_str_corr_ind.values)
     df_str_corr_dep = df_str_corr_ind_temp.loc[:, dep_column]
     return np.matmul(np.matmul(np.transpose(df_str_corr_dep.values), df_str_corr_ind_inv), df_str_corr_dep.values)
+
+
+def score_segment(y_true, y_pred):
+    """
+    Returns median loss, mean loss, aggregate loss
+    Args:
+        y_true: A numpy array that contains the actual values of the time series.
+        y_pred: A numpy array that contains the predicted values of the time series.
+    """
+    loss_median = (np.median(y_true/y_pred))-1
+    loss_mean = (np.mean(y_true/y_pred))-1
+    loss_aggregate = len(y_true)-np.sum(y_true/y_pred)
+    return loss_median, loss_mean, loss_aggregate

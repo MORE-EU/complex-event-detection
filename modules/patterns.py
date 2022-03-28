@@ -3,6 +3,8 @@ import pandas as pd
 import matrixprofile
 import matrixprofile as mpf
 from stumpy import stump, fluss, gpu_stump, mstumped, mstump, subspace
+from stumpy import stump, motifs, mass, match, core
+
 
 def pick_subspace_columns(df, mps, idx, k, m, include):
     
@@ -400,3 +402,147 @@ def segment_ts(mpi, k_optimal, path, L=None, regions=4, excl_factor=5):
         if(path):
             np.save(path, output)
         return output, lam
+
+    
+def summary_motifs(mot,wholedict,Ranking,show_best=True):
+    
+    dflist=[]
+    for m in mot:
+        for typem in range(0,len(wholedict[m])):
+            for stats in wholedict[m][typem]:
+                dflist.append([m,typem+1,Ranking[m][typem],wholedict[m][typem][0][0],wholedict[m][typem][0][1],wholedict[m][typem][0][2],wholedict[m][typem][0][11],wholedict[m][typem][0][12],wholedict[m][typem][0][13],wholedict[m][typem][0][6],wholedict[m][typem][0][7],wholedict[m][typem][0][8],wholedict[m][typem][0][9],wholedict[m][typem][0][10]])
+    df_output = pd.DataFrame(dflist, columns=['Pattern Lenght in Days', 'Motif type','Motif Instances passing from Wash/Rain','Motif Neighbors','Soil Derate Before ','Soil Derate After','Slope at motif %','Slope Before Motif %','Slope ratio','Mean Power Before Motif','Gain of Power %','Mean Power of Neighbors','Mean Precititation of Neighbors','Precipitation Percentage %'])
+    if show_best==False:
+        return df_output
+    else:
+        return df_output[df_output['Slope ratio']<0]
+
+            
+def get_corrected_matrix_profile(matrix_profile, annotation_vector):
+    corrected_matrix_profile = matrix_profile.copy()    
+    corrected_matrix_profile[:, 0] = matrix_profile[:, 0] + ((1 - annotation_vector) * np.max(matrix_profile[:, 0]))
+    return corrected_matrix_profile
+
+
+def Ranker(df,mot,miclean,mdclean,df_rains_output,df_wash_output):
+    Ranker={}
+    wholedict={}
+    dates = pd.DataFrame(index=range(len(df)))
+    dates = dates.set_index(df.index)
+    dates['power']=df['power']
+    dates['soil']=df.soiling_derate
+    dates['preci']=df.precipitation
+    dates['irradiance']=df.poa
+    
+    for m in mot:
+        mscores=[]
+        for motif in miclean[m]:
+            scores={}
+            for index in motif:
+                d=dates.index[index]
+                scores[index]=0
+                for idx,row in df_rains_output.iterrows():
+                    if d<row.RainStop and d>row.RainStart:
+                        if index in scores.keys():
+                            scores[index]+=1         
+                for idx,row in df_wash_output.iterrows():
+                    if d<row.WashStop and d>row.WashStart:
+                        if index in scores.keys():
+                             scores[index]+=1
+                for idx,row in df_rains_output.iterrows():
+                    if d<row.RainStop and d>row.RainStart:
+                        if index+m in scores.keys():
+                            scores[index]+=1       
+                for idx,row in df_wash_output.iterrows():
+                    if d<row.WashStop and d>row.WashStart:
+                        if index+m in scores.keys():
+                            scores[index]+=1      
+            score = 0
+            for val in scores.values():
+                score = score + val
+            mscores.append(score)             
+        Ranker[m]=mscores
+
+    for m in mot:
+        fortype={}
+        for mtype in range(0,len(miclean[m])):
+
+            lista=[]
+            metritis=0
+            soilb=0
+            metritisprin=0
+            metritismd=0
+            metritisprmd=0
+            metritisstd=0
+            metritisprstd=0
+            stoind=0
+            soila=0
+            meanper=0
+            meanperpr=0
+            metrslope=0
+            metrslopeb=0
+            len(miclean[m][mtype])
+            for index in miclean[m][mtype][::]:
+                
+                temp=df.reset_index(drop=True)
+                if temp.index[0:index].size == 0:
+                    slopep=np.nan  
+                else:
+                    slope, intercept = np.polyfit(temp.index[index:index+m],temp.power[index:index+m],1)
+                    metrslope=metrslope+slope
+                    slopep, intercept = np.polyfit(temp.index[0:index],temp.power[0:index],1)
+                    metrslopeb= metrslopeb + slopep                
+                #mean       
+                metritis=metritis + df.power[index+m:index+2*m].mean()  
+                metritisprin=metritisprin+ df.power[index-2*m:index-m].mean()
+                stoind=stoind+df.power[index:index+m]
+                meanper=meanper+df.precipitation[index+m:index+2*m].mean()
+                meanperpr=meanperpr+df.precipitation[index-2*m:index-m].mean()
+                soilb=soilb+df.soiling_derate[index-2*m:index-m].mean()
+                soila=soila+df.soiling_derate[index+m:index+2*m].mean()
+            
+            
+            if len(miclean[m][mtype])==0:
+                break;
+            metritis=metritis/len(miclean[m][mtype])
+            metrslope=metrslope/len(miclean[m][mtype])*100
+            metrslopep=metrslopeb/len(miclean[m][mtype])*100
+            soilb=soilb/len(miclean[m][mtype])
+            soila=soila/len(miclean[m][mtype])
+            meanper=meanper/len(miclean[m][mtype])
+            meanperpr=meanperpr/len(miclean[m][mtype])
+            metritisprin=metritisprin/len(miclean[m][mtype])
+            stoind=stoind/len(miclean[m][mtype])
+    
+            percent_diff = ((metritis - metritisprin)/metritis)*100
+            prec_diff=((meanper-meanperpr)/meanper)*100
+            slope_ratio=(metrslopep/metrslope)
+            lista.append([len(miclean[m][mtype]),soilb,soila,np.min(mdclean[m][mtype]),np.average(mdclean[m][mtype]),np.max(mdclean[m][mtype]),
+                          metritisprin,percent_diff,metritis,meanper,prec_diff,metrslope,metrslopep,slope_ratio])
+            fortype[mtype]=lista
+        wholedict[m]=fortype
+    return Ranker ,wholedict
+
+
+def clean_motifs(corrected,mot,dailypower,max_motifs=25,min_nei=1,max_di=None,cut=None,max_matc=200):
+    md={}
+    mi={}
+    mdtest={}
+    mitest={}
+    for m in mot:
+        md[m],mi[m]= motifs(dailypower,corrected[m][:,0], min_neighbors=min_nei, max_distance=max_di,
+                            cutoff=cut, max_matches=max_matc, max_motifs=max_motifs, normalize=True)
+    miclean=dict()
+    for m in mot:
+        outp=[]
+        for j in range(0,len(mi[m])):
+            outp.append(np.delete(mi[m][j], np.where(mi[m][j] == -1)))
+        miclean[m]=outp
+
+    mdclean=dict()
+    for m in mot:
+        outp=[]
+        for j in range(0,len(md[m])):
+            outp.append(md[m][j][~np.isnan(md[m][j])])
+        mdclean[m]=outp
+    return miclean ,mdclean

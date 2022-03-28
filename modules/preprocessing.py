@@ -4,6 +4,7 @@ from matrixprofile import core
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from sklearn.preprocessing import Normalizer
 from sklearn.preprocessing import normalize as norm
+from sklearn.neighbors import LocalOutlierFactor
 
 def enumerate2(start, end, step=1):
     """ 
@@ -275,3 +276,36 @@ def unit_norm_df(df):
     """
     df[df.columns] = norm(df, axis=0)
     return df
+
+
+def outliers_IQR(df):
+    Q1 = df.quantile(0.25)
+    Q3 = df.quantile(0.75)
+    IQR = Q3 - Q1
+    df_iqr = df[~((df < (Q1 - 1.5 * IQR)) | (df >(Q3 + 1.5 * IQR))).any(axis=1)]
+    return df_iqr
+
+
+def outliers_LoF(df, n_neighbors=300):
+    clf = LocalOutlierFactor(n_neighbors=n_neighbors, n_jobs=16)
+    res = clf.fit_predict(df)
+    df = df[res == 1]
+    return df
+
+
+def split_to_bins(df, bin_size, mini, maxi, feat):
+    bins = np.arange(mini, maxi, bin_size)
+    bins = np.append(bins, maxi)
+    bin_masks = []
+    bin_feature = feat
+    for i in range(len(bins) - 1):
+        mask = (df[bin_feature]>= bins[i]) & (df[bin_feature] < bins[i + 1])
+        bin_masks.append(mask)
+    return bin_masks
+
+
+def create_scaler(dfs):
+    df = pd.concat(dfs)
+    min_max_scaler = MinMaxScaler()
+    fitted_scaler = min_max_scaler.fit(df)
+    return fitted_scaler
