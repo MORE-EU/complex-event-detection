@@ -50,20 +50,22 @@ def score(y_true, y_pred):
     Args:
         y_true: A numpy array that contains the actual values of the time series.
         y_pred: A numpy array that contains the predicted values of the time series.
-    
-    Return: 
-        Returns a value for each of the following measures: 
-        r-squared, mean absolute error, mean error, mean absolute percentage error, mean percentage error
-        
-            
-        
+
+    Return:
+        Returns a value for each of the following measures:
+        r-squared, mean absolute error, mean error, mean absolute percentage error, mean percentage error, median
+
+
+
     """
     r_sq = metrics.r2_score(y_true, y_pred)
     mae = metrics.mean_absolute_error(y_true, y_pred)
     me = np.mean(y_true-y_pred)
     mape = mape1(y_true, y_pred)
     mpe = mpe1(y_true, y_pred)
-    return r_sq, mae, me, mape, mpe
+    med = np.median(y_true-y_pred)
+
+    return r_sq, mae, me, mape, mpe, med
 
 
 def get_top_deviations(scores, metric='mpe', n=5):

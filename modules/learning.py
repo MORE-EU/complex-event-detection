@@ -390,8 +390,8 @@ def calc_changepoints_one_model(df, dates_rain_start, dates_rain_stop, model, ta
         df_ar = df[d2:d3]
         df_br = df[d0:d1]
         try:
-            y_pred_ar = le.predict(df_ar, model, feats, target)
-            y_pred_br = le.predict(df_br, model, feats, target)
+            y_pred_ar = predict(df_ar, model, feats, target)
+            y_pred_br = predict(df_br, model, feats, target)
             errors_ar[i,:] = st.score(df_ar[target].array, y_pred_ar)
             errors_br[i,:] = st.score(df_br[target].array, y_pred_br)
         except:
@@ -423,7 +423,7 @@ def calc_changepoints_many_models(df, dates_rain_start, dates_rain_stop, target,
         d1 = dates_rain_start.iloc[i]
         d2 = dates_rain_stop.iloc[i]
         try:
-            y_pred_train, score_train, y_pred_val, errors_br[i,:], y_pred_test, errors_ar[i,:] = le.changepoint_scores(df, feats, target, d1, d2, w1, w2, w3)
+            y_pred_train, score_train, y_pred_val, errors_br[i,:], y_pred_test, errors_ar[i,:] = changepoint_scores(df, feats, target, d1, d2, w1, w2, w3)
         except:
             errors_ar[i,:] = [np.nan]*6
             errors_br[i,:] = [np.nan]*6
