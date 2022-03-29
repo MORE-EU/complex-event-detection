@@ -27,9 +27,9 @@ def predict(df_test, model, feats, target):
     """
 
     df_x = df_test[feats]
-    df_y = df_test[target] #is this needed?
+    df_y = df_test[target]
     X = df_x.values
-    y_true = df_y.values #is this needed?
+    y_true = df_y.values
     y_pred = model.predict(X)
     return y_pred
 
@@ -79,8 +79,8 @@ def fit_linear_model(df, feats, target, a=1e-4, deg=3, method='ridge', fit_inter
 
     pipeline.fit(X, y)
     y_pred = pipeline.predict(X)
-    r_sq, mae, me, mape, mpe = st.score(y, y_pred)
-    return pipeline, y_pred, r_sq, mae, me, mape, mpe
+    r_sq, mae, me, mape, mpe, med = st.score(y, y_pred)
+    return pipeline, y_pred, r_sq, mae, me, mape, mpe, med
 
 
 def get_line_and_slope(values):
@@ -140,11 +140,11 @@ def train_on_reference_points(df, w_train, ref_points, feats, target, random_sta
         df_train = df_train.append(df_tmp2[:size_train])
         df_val = df_val.append(df_tmp2[size_train:])
 
-    model, y_pred_train, r_sq_train, mae_train, me_train, mape_train, mpe_train = fit_linear_model(df_train, feats, target)
+    model, y_pred_train, r_sq_train, mae_train, me_train, mape_train, mpe_train, Me_train = fit_linear_model(df_train, feats, target)
     y_pred_val = predict(df_val, model, feats, target)
-    r_sq_val, mae_val, me_val, mape_val, mpe_val = st.score(df_val[target].values, y_pred_val)
-    training_scores = np.array([r_sq_train, mae_train, me_train, mape_train])
-    validation_scores = np.array([r_sq_val, mae_val, me_val, mape_val, mpe_val])
+    r_sq_val, mae_val, me_val, mape_val, mpe_val, Me_val = st.score(df_val[target].values, y_pred_val)
+    training_scores = np.array([r_sq_train, mae_train, me_train, mape_train, Me_train])
+    validation_scores = np.array([r_sq_val, mae_val, me_val, mape_val, mpe_val, Me_val])
 
     print('Training Metrics:')
     print(f'MAE:{training_scores[1]:.3f} \nME(true-pred):{training_scores[2]:.3f} \nMAPE:{training_scores[3]:.3f} \nR2: {training_scores[0]:.3f}\n')
@@ -155,20 +155,20 @@ def train_on_reference_points(df, w_train, ref_points, feats, target, random_sta
 
 def predict_on_sliding_windows(df, win_size, step, model, feats, target):
     """
-    Given a regression model, predicts values on a sliding window in a dataframe 
-    and outputs scores, a list of predictions and a list of windows. 
+    Given a regression model, predicts values on a sliding window in a dataframe
+    and outputs scores, a list of predictions and a list of windows.
 
-    Args: 
+    Args:
         df: The input dataframe.
         win_size: The size of the sliding window, as a number of days.
         step: The sliding step.
-        model: The regression model. 
+        model: The regression model.
         feats: A list of names of columns of df indicating the feature variables.
         target: The name of a column of df indicating the dependent variable.
 
     Returns:
-        scores: An array of arrays of scores: one array for each window containing the coefficient of 
-        determination “R squared”, the mean absolute error, the mean error, the mean absolute percentage error, 
+        scores: An array of arrays of scores: one array for each window containing the coefficient of
+        determination “R squared”, the mean absolute error, the mean error, the mean absolute percentage error,
         the mean percentage error.
         preds_test: a list of predictions: one list of predicted values for each window.
         windows: A list of starting/ending dates: one for each window.
@@ -182,63 +182,49 @@ def predict_on_sliding_windows(df, win_size, step, model, feats, target):
         df_test = df.loc[time:window]
         if df_test.shape[0]>0:
             y_pred = predict(df_test, model, feats, target)
-            r_sq, mae, me, mape, mpe = st.score(df_test[target].values, y_pred)
-            scores_list.append([r_sq, mae, me, mape, mpe])
+            r_sq, mae, me, mape, mpe, Me = st.score(df_test[target].values, y_pred)
+            scores_list.append([r_sq, mae, me, mape, mpe, Me])
             preds_test.append(y_pred)
             windows.append((time, window))
     scores = np.array(scores_list)
     return scores, preds_test, windows
 
 
-def changepoint_scores(df, feats, target, d1, d2, w_train, w_val, w_test):
+def predict_on_sliding_windows(df, win_size, step, model, feats, target):
     """
-    Given as input a dataframe and a reference interval where a changepoint may lie, trains a regression model in
-    a window before the reference interval, validates the model in a window before the reference interval and tests 
-    the model in a window after the reference interval. 
+    Given a regression model, predicts values on a sliding window in a dataframe
+    and outputs scores, a list of predictions and a list of windows.
 
     Args:
         df: The input dataframe.
+        win_size: The size of the sliding window, as a number of days.
+        step: The sliding step.
+        model: The regression model.
         feats: A list of names of columns of df indicating the feature variables.
         target: The name of a column of df indicating the dependent variable.
-        d1: The first date in the reference interval.
-        d2: The last date in the reference interval.
-        w_train: The number of days defining the training set.
-        w_val: The number of days defining the validation set.
-        w_test: The number of days defining the test set.
+
     Returns:
-        y_pred_train: The array of predicted values in the training set.
-        score_train: An array containing scores for the training set: 
-        the coefficient of determination “R squared”, the mean absolute error, the mean error, 
-        the mean absolute percentage error, the mean percentage error.
-        y_pred_val: The array of predicted values in the validation set.
-        score_val: An array containing scores for the validation set: 
-        the coefficient of determination “R squared”, the mean absolute error, the mean error, 
-        the mean absolute percentage error, the mean percentage error.
-        y_pred_test: The array of predicted values in the test set.
-        score_test: An array containing scores for the test set: 
-        the coefficient of determination “R squared”, the mean absolute error, the mean error, 
-        the mean absolute percentage error, the mean percentage error.
+        scores: An array of arrays of scores: one array for each window containing the coefficient of
+        determination “R squared”, the mean absolute error, the mean error, the mean absolute percentage error,
+        the mean percentage error.
+        preds_test: a list of predictions: one list of predicted values for each window.
+        windows: A list of starting/ending dates: one for each window.
     """
 
-    d_train_start = pd.to_datetime(d1) - pd.Timedelta(days=w_train) - pd.Timedelta(days=w_val)
-    d_train_stop = pd.to_datetime(d1) - pd.Timedelta(days=w_val)
-    d_test_stop = pd.to_datetime(d2) + pd.Timedelta(days=w_test)
-    df_train = df.loc[str(d_train_start):str(d_train_stop)]
-    df_val = df.loc[str(d_train_stop):str(d1)]
-    df_test = df.loc[str(d2):str(d_test_stop)]
-    if len(df_train) > 0 and len(df_test) > 0:
-        model, y_pred_train, r_sq_train, mae_train, me_train, mape_train, mpe_train = fit_linear_model(df_train, feats, target)
-        y_pred_val = predict(df_val, model, feats, target)
-        y_pred_test = predict(df_test, model, feats, target)
-        
-        r_sq_val, mae_val, me_val, mape_val, mpe_val = st.score(df_val[target].values, y_pred_val)
-        r_sq_test, mae_test, me_test, mape_test, mpe_test = st.score(df_test[target].values, y_pred_test)
-        score_train = np.array([-r_sq_train, mae_train, me_train, mape_train, mpe_train])
-        score_val = np.array([-r_sq_val, mae_val, me_val, mape_val, mpe_val])
-        score_test = np.array([-r_sq_test, mae_test, me_test, mape_test, mpe_test])
-        return y_pred_train, score_train, y_pred_val, score_val, y_pred_test, score_test
-    else:
-        raise Exception("Either the training set is empty or the test set is empty")
+    windows = []
+    preds_test = []
+    scores_list = []
+    for i, time in enumerate2(min(df.index), max(df.index), step=step):
+        window = pd.to_datetime(time) + pd.Timedelta(days=win_size)
+        df_test = df.loc[time:window]
+        if df_test.shape[0]>0:
+            y_pred = predict(df_test, model, feats, target)
+            r_sq, mae, me, mape, mpe, Me = st.score(df_test[target].values, y_pred)
+            scores_list.append([r_sq, mae, me, mape, mpe, Me])
+            preds_test.append(y_pred)
+            windows.append((time, window))
+    scores = np.array(scores_list)
+    return scores, preds_test, windows
 
 
 def fit_pipeline(df, feats, target, pipeline, params):
@@ -273,7 +259,7 @@ def fit_pipeline(df, feats, target, pipeline, params):
     pipeline.set_params(**params)
     pipeline.fit(X, y)
     y_pred = pipeline.predict(X)
-    r_sq, mae, me, mape, mpe = st.score(y, y_pred)
+    r_sq, mae, me, mape, mpe, _ = st.score(y, y_pred)
     return pipeline, y_pred, r_sq, mae, me, mape, mpe
 
 
@@ -428,3 +414,23 @@ def calc_changepoints_many_models(df, dates_rain_start, dates_rain_stop, target,
             errors_ar[i,:] = [np.nan]*6
             errors_br[i,:] = [np.nan]*6
     return errors_br, errors_ar 
+
+def calc_changepoints_one_model(df, dates_rain_start, dates_rain_stop, model, target, feats, w1, w2):
+    errors_br = np.empty((dates_rain_start.size, 6))
+    errors_ar = np.empty((dates_rain_start.size, 6))
+    for i in range(dates_rain_start.size):
+        d1 = dates_rain_start.iloc[i]
+        d0 = d1 - pd.Timedelta(days=w1)
+        d2 = dates_rain_stop.iloc[i]
+        d3 = d2 + pd.Timedelta(days=w2)
+        df_ar = df[d2:d3]
+        df_br = df[d0:d1]
+        try:
+            y_pred_ar = le.predict(df_ar, model, feats, target)
+            y_pred_br = le.predict(df_br, model, feats, target)
+            errors_ar[i,:] = st.score(df_ar[target].array, y_pred_ar)
+            errors_br[i,:] = st.score(df_br[target].array, y_pred_br)
+        except:
+            errors_ar[i,:] = [np.nan]*6
+            errors_br[i,:] = [np.nan]*6
+    return errors_br, errors_ar
