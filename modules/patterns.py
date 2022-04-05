@@ -3,7 +3,6 @@ import pandas as pd
 import matrixprofile
 import matrixprofile as mpf
 from stumpy import stump, fluss, gpu_stump, mstumped, mstump, subspace
-from stumpy import stump, motifs, mass, match, core
 
 
 def pick_subspace_columns(df, mps, idx, k, m, include):
