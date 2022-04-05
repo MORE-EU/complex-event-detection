@@ -5,7 +5,7 @@ import os
 import pathlib
 import warnings
 import gc
-import matplotlib as plt
+from matplotlib import pyplot as plt
 
 
 def load_df(path): 
