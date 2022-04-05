@@ -414,23 +414,53 @@ def calc_changepoints_many_models(df, dates_rain_start, dates_rain_stop, target,
             errors_ar[i,:] = [np.nan]*6
             errors_br[i,:] = [np.nan]*6
     return errors_br, errors_ar 
+def changepoint_scores(df, feats, target, d1, d2, w_train, w_val, w_test):
+    """
+    Given as input a dataframe and a reference interval where a changepoint may lie, trains a regression model in
+    a window before the reference interval, validates the model in a window before the reference interval and tests 
+    the model in a window after the reference interval. 
 
-def calc_changepoints_one_model(df, dates_rain_start, dates_rain_stop, model, target, feats, w1, w2):
-    errors_br = np.empty((dates_rain_start.size, 6))
-    errors_ar = np.empty((dates_rain_start.size, 6))
-    for i in range(dates_rain_start.size):
-        d1 = dates_rain_start.iloc[i]
-        d0 = d1 - pd.Timedelta(days=w1)
-        d2 = dates_rain_stop.iloc[i]
-        d3 = d2 + pd.Timedelta(days=w2)
-        df_ar = df[d2:d3]
-        df_br = df[d0:d1]
-        try:
-            y_pred_ar = le.predict(df_ar, model, feats, target)
-            y_pred_br = le.predict(df_br, model, feats, target)
-            errors_ar[i,:] = st.score(df_ar[target].array, y_pred_ar)
-            errors_br[i,:] = st.score(df_br[target].array, y_pred_br)
-        except:
-            errors_ar[i,:] = [np.nan]*6
-            errors_br[i,:] = [np.nan]*6
-    return errors_br, errors_ar
+    Args:
+        df: The input dataframe.
+        feats: A list of names of columns of df indicating the feature variables.
+        target: The name of a column of df indicating the dependent variable.
+        d1: The first date in the reference interval.
+        d2: The last date in the reference interval.
+        w_train: The number of days defining the training set.
+        w_val: The number of days defining the validation set.
+        w_test: The number of days defining the test set.
+    Returns:
+        y_pred_train: The array of predicted values in the training set.
+        score_train: An array containing scores for the training set: 
+        the coefficient of determination “R squared”, the mean absolute error, the mean error, 
+        the mean absolute percentage error, the mean percentage error.
+        y_pred_val: The array of predicted values in the validation set.
+        score_val: An array containing scores for the validation set: 
+        the coefficient of determination “R squared”, the mean absolute error, the mean error, 
+        the mean absolute percentage error, the mean percentage error.
+        y_pred_test: The array of predicted values in the test set.
+        score_test: An array containing scores for the test set: 
+        the coefficient of determination “R squared”, the mean absolute error, the mean error, 
+        the mean absolute percentage error, the mean percentage error.
+    """
+
+    d_train_start = pd.to_datetime(d1) - pd.Timedelta(days=w_train) - pd.Timedelta(days=w_val)
+    d_train_stop = pd.to_datetime(d1) - pd.Timedelta(days=w_val)
+    d_test_stop = pd.to_datetime(d2) + pd.Timedelta(days=w_test)
+    df_train = df.loc[str(d_train_start):str(d_train_stop)]
+    df_val = df.loc[str(d_train_stop):str(d1)]
+    df_test = df.loc[str(d2):str(d_test_stop)]
+    if len(df_train) > 0 and len(df_test) > 0:
+        model, y_pred_train, r_sq_train, mae_train, me_train, mape_train, mpe_train, Me_train = fit_linear_model(df_train, feats, target)
+        y_pred_val = predict(df_val, model, feats, target)
+        y_pred_test = predict(df_test, model, feats, target)
+        
+        r_sq_val, mae_val, me_val, mape_val, mpe_val, Me_val = st.score(df_val[target].values, y_pred_val)
+        r_sq_test, mae_test, me_test, mape_test, mpe_test, Me_test = st.score(df_test[target].values, y_pred_test)
+        score_train = np.array([-r_sq_train, mae_train, me_train, mape_train, mpe_train, Me_train])
+        score_val = np.array([-r_sq_val, mae_val, me_val, mape_val, mpe_val, Me_val])
+        score_test = np.array([-r_sq_test, mae_test, me_test, mape_test, mpe_test, Me_test])
+        return y_pred_train, score_train, y_pred_val, score_val, y_pred_test, score_test
+    else:
+        raise Exception("Either the training set is empty or the test set is empty")
+
