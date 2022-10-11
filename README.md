@@ -1,4 +1,4 @@
-(initial integrated version of the platform)
+(initial integrated version of the platform) <br>
 Complex-Event-Detection
 =======================
 
