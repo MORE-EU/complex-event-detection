@@ -1,3 +1,4 @@
+(initial integrated version of the platform)
 Complex-Event-Detection
 =======================
 
