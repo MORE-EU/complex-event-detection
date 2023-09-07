@@ -1,0 +1,6 @@
+lightgbm==4.0.0
+matplotlib==3.5.1
+modules==1.0.0
+scikit_learn==1.3.0
+seaborn==0.12.2
+tqdm==4.66.1
